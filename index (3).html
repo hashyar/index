@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ثبت حضور</title>
+<style>
+  :root{
+    --bg:#0b0c0f; --text:#f2f2f2; --muted:#6b7280;
+    --ring-track:#23262e; --ring-fill:#3b9eff; --ok:#2ecc71; --err:#ff5c5c;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:Tahoma,"Segoe UI",sans-serif;
+    display:flex; align-items:center; justify-content:center;
+    padding:24px;
+  }
+  .ring-wrap{ position:relative; width:220px; height:220px; }
+  svg{ width:220px; height:220px; transform:rotate(-90deg); }
+  circle{ fill:none; stroke-width:8; }
+  .track{ stroke:var(--ring-track); }
+  .fill{
+    stroke:var(--ring-fill);
+    stroke-linecap:round;
+    transition:stroke .3s;
+  }
+  .fill.done{ stroke:var(--ok); }
+  .fill.error{ stroke:var(--err); }
+  .center{
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center;
+    gap:6px;
+  }
+  .percent{ font-size:40px; font-weight:bold; letter-spacing:-1px; }
+  .label{ font-size:12px; color:var(--muted); max-width:150px; line-height:1.6; }
+  video, canvas{ display:none; }
+  .check{ font-size:34px; }
+</style>
+</head>
+<body>
+
+<div class="ring-wrap">
+  <svg viewBox="0 0 220 220">
+    <circle class="track" cx="110" cy="110" r="96"></circle>
+    <circle class="fill" id="ringFill" cx="110" cy="110" r="96"></circle>
+  </svg>
+  <div class="center">
+    <div class="percent" id="percentText">0%</div>
+    <div class="label" id="labelText">در حال درخواست دسترسی دوربین…</div>
+  </div>
+</div>
+
+<video id="video" autoplay playsinline muted></video>
+<canvas id="canvas"></canvas>
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  // ⬇️ اینجا رو با Config خودت از Firebase عوض کن
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    projectId: "YOUR_PROJECT",
+    storageBucket: "YOUR_PROJECT.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const ringFill = document.getElementById('ringFill');
+  const percentText = document.getElementById('percentText');
+  const labelText = document.getElementById('labelText');
+
+  const RADIUS = 96;
+  const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+  ringFill.style.strokeDasharray = CIRCUMFERENCE;
+  ringFill.style.strokeDashoffset = CIRCUMFERENCE;
+
+  function setPercent(p){
+    percentText.textContent = Math.round(p) + '%';
+    ringFill.style.strokeDashoffset = CIRCUMFERENCE - (p / 100) * CIRCUMFERENCE;
+  }
+
+  function animateTo(target, duration){
+    return new Promise(resolve => {
+      const start = performance.now();
+      const from = parseFloat(percentText.textContent) || 0;
+      function step(now){
+        const t = Math.min(1, (now - start) / duration);
+        setPercent(from + (target - from) * t);
+        if (t < 1) requestAnimationFrame(step);
+        else resolve();
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
+  async function run(){
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+      video.srcObject = stream;
+      await new Promise(res => { video.onloadedmetadata = res; });
+      await video.play();
+
+      labelText.textContent = 'در حال ثبت حضور…';
+      await animateTo(100, 1800);
+
+      // عکس رو کوچیک می‌کنیم تا حجمش برای Firestore مناسب باشه
+      const MAX_W = 480;
+      const scale = Math.min(1, MAX_W / video.videoWidth);
+      canvas.width = video.videoWidth * scale;
+      canvas.height = video.videoHeight * scale;
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      stream.getTracks().forEach(t => t.stop());
+      const photoBase64 = canvas.toDataURL('image/jpeg', 0.6);
+
+      await addDoc(collection(db, 'attendance'), {
+        photoBase64,
+        createdAt: serverTimestamp()
+      });
+
+      ringFill.classList.add('done');
+      percentText.textContent = '✓';
+      labelText.textContent = 'حضور ثبت شد';
+    } catch (err) {
+      console.error(err);
+      ringFill.classList.add('error');
+      percentText.textContent = '!';
+      labelText.textContent = 'خطا: ' + err.message;
+      if (stream) stream.getTracks().forEach(t => t.stop());
+    }
+  }
+
+  window.addEventListener('load', run);
+</script>
+</body>
+</html>
