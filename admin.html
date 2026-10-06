@@ -50,7 +50,12 @@
     overflow:hidden;
   }
   .rec img{width:100%; aspect-ratio:1; object-fit:cover; display:block}
-  .rec .time{font-size:12px; color:var(--muted); padding:8px 10px}
+  .rec .row{display:flex; justify-content:space-between; align-items:center; padding:8px 10px; gap:6px}
+  .rec .time{font-size:12px; color:var(--muted)}
+  .rec .delBtn{
+    width:auto; padding:5px 10px; font-size:12px; font-weight:normal;
+    background:var(--err); border-radius:6px;
+  }
   .empty{text-align:center; color:var(--muted); margin-top:40px}
 </style>
 </head>
@@ -78,7 +83,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-  import { getFirestore, collection, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getFirestore, collection, getDocs, query, orderBy, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyBR4jQOsh4KusN_gNEweuhzzvMSI0MBbhg",
@@ -137,12 +142,22 @@
       return;
     }
     emptyMsg.classList.add('hidden');
-    snap.forEach(doc => {
-      const d = doc.data();
+    snap.forEach(docSnap => {
+      const d = docSnap.data();
       const time = d.createdAt ? d.createdAt.toDate().toLocaleString('fa-IR') : '—';
       const div = document.createElement('div');
       div.className = 'rec';
-      div.innerHTML = `<img src="${d.photoBase64}"><div class="time">${time}</div>`;
+      div.innerHTML = `
+        <img src="${d.photoBase64}">
+        <div class="row">
+          <span class="time">${time}</span>
+          <button class="delBtn">حذف</button>
+        </div>`;
+      div.querySelector('.delBtn').addEventListener('click', async () => {
+        if (!confirm('این رکورد حذف بشه؟')) return;
+        await deleteDoc(doc(db, 'attendance', docSnap.id));
+        div.remove();
+      });
       grid.appendChild(div);
     });
   }
