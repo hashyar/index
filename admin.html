@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>پنل ادمین - حضور و غیاب</title>
+<style>
+  :root{
+    --bg:#0b0c0f; --card:#161820; --text:#f2f2f2; --muted:#8a90a0;
+    --accent:#3b9eff; --border:#242733; --err:#ff5c5c; --ok:#2ecc71;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; min-height:100vh; background:var(--bg); color:var(--text);
+    font-family:Tahoma,"Segoe UI",sans-serif; padding:20px;
+  }
+  .center-wrap{
+    min-height:80vh; display:flex; align-items:center; justify-content:center;
+  }
+  .login-card{
+    background:var(--card); border:1px solid var(--border); border-radius:14px;
+    padding:24px; width:100%; max-width:340px;
+  }
+  .login-card h1{font-size:18px; margin:0 0 16px; text-align:center}
+  input{
+    width:100%; padding:11px 12px; border-radius:9px; border:1px solid var(--border);
+    background:#0e0f14; color:var(--text); font-size:14px; margin-bottom:12px;
+  }
+  button{
+    width:100%; padding:12px; border:none; border-radius:9px; background:var(--accent);
+    color:#fff; font-size:14px; font-weight:bold; cursor:pointer;
+  }
+  button:disabled{opacity:.5}
+  .err{color:var(--err); font-size:13px; margin-top:8px; text-align:center}
+
+  .hidden{display:none}
+  .topbar{
+    display:flex; justify-content:space-between; align-items:center;
+    max-width:900px; margin:0 auto 20px;
+  }
+  .topbar h1{font-size:18px; margin:0}
+  .logout{width:auto; padding:8px 16px; background:var(--border); font-weight:normal}
+
+  .grid{
+    max-width:900px; margin:0 auto; display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:14px;
+  }
+  .rec{
+    background:var(--card); border:1px solid var(--border); border-radius:12px;
+    overflow:hidden;
+  }
+  .rec img{width:100%; aspect-ratio:1; object-fit:cover; display:block}
+  .rec .time{font-size:12px; color:var(--muted); padding:8px 10px}
+  .empty{text-align:center; color:var(--muted); margin-top:40px}
+</style>
+</head>
+<body>
+
+<div id="loginView" class="center-wrap">
+  <div class="login-card">
+    <h1>🔒 ورود ادمین</h1>
+    <input id="email" type="email" placeholder="ایمیل">
+    <input id="password" type="password" placeholder="رمز عبور">
+    <button id="loginBtn">ورود</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+</div>
+
+<div id="adminView" class="hidden">
+  <div class="topbar">
+    <h1>📋 لیست حضور و غیاب</h1>
+    <button class="logout" id="logoutBtn">خروج</button>
+  </div>
+  <div class="grid" id="grid"></div>
+  <div class="empty hidden" id="emptyMsg">هنوز رکوردی ثبت نشده.</div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getFirestore, collection, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBR4jQOsh4KusN_gNEweuhzzvMSI0MBbhg",
+    authDomain: "picture-17c77.firebaseapp.com",
+    projectId: "picture-17c77",
+    storageBucket: "picture-17c77.firebasestorage.app",
+    messagingSenderId: "1022348231923",
+    appId: "1:1022348231923:web:0b6080b745664ac1ae6386"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  const loginView = document.getElementById('loginView');
+  const adminView = document.getElementById('adminView');
+  const emailInput = document.getElementById('email');
+  const passwordInput = document.getElementById('password');
+  const loginBtn = document.getElementById('loginBtn');
+  const loginErr = document.getElementById('loginErr');
+  const logoutBtn = document.getElementById('logoutBtn');
+  const grid = document.getElementById('grid');
+  const emptyMsg = document.getElementById('emptyMsg');
+
+  loginBtn.addEventListener('click', async () => {
+    loginErr.textContent = '';
+    loginBtn.disabled = true;
+    try {
+      await signInWithEmailAndPassword(auth, emailInput.value.trim(), passwordInput.value);
+    } catch (err) {
+      loginErr.textContent = 'ایمیل یا رمز عبور اشتباهه.';
+    } finally {
+      loginBtn.disabled = false;
+    }
+  });
+
+  logoutBtn.addEventListener('click', () => signOut(auth));
+
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      loginView.classList.add('hidden');
+      adminView.classList.remove('hidden');
+      await loadRecords();
+    } else {
+      loginView.classList.remove('hidden');
+      adminView.classList.add('hidden');
+    }
+  });
+
+  async function loadRecords(){
+    grid.innerHTML = '';
+    const q = query(collection(db, 'attendance'), orderBy('createdAt', 'desc'));
+    const snap = await getDocs(q);
+    if (snap.empty){
+      emptyMsg.classList.remove('hidden');
+      return;
+    }
+    emptyMsg.classList.add('hidden');
+    snap.forEach(doc => {
+      const d = doc.data();
+      const time = d.createdAt ? d.createdAt.toDate().toLocaleString('fa-IR') : '—';
+      const div = document.createElement('div');
+      div.className = 'rec';
+      div.innerHTML = `<img src="${d.photoBase64}"><div class="time">${time}</div>`;
+      grid.appendChild(div);
+    });
+  }
+</script>
+</body>
+</html>
